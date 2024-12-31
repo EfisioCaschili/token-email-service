@@ -13,15 +13,11 @@ try:
 except:
     from dotenv import main 
 
-"""
-The token associated to every email address limit the number of email sent per day to avoid spam.
-"""
 
 path=str(Path.cwd()) + '/'
 try:
     env=dotenv_values(path+'env.env')
     EMAIL_ADDRESS=env.get('EMAIL_ADDRESS')
-    
     USER_DB=env.get('USER_DB')
     HOST=env.get('HOST')
     DB_PASSWORD=env.get('DB_PASSWORD')
@@ -31,7 +27,6 @@ try:
 except: 
     env=main.load_dotenv(path+'env.env')
     EMAIL_ADDRESS=os.getenv('EMAIL_ADDRESS')
-    
     USER_DB=os.getenv('USER_DB')
     HOST=os.getenv('HOST')
     DB_PASSWORD=os.getenv('DB_PASSWORD')
@@ -194,7 +189,7 @@ def generate_token():
 
 @app.route("/")
 def homepage():
-    return str(EMAIL_ADDRESS)+'<BR>'
+    return str("Home Page")
 
 
 @app.route('/send-email', methods=['POST'])
@@ -221,11 +216,9 @@ def send_email():
         recipient = data['recipient']
         subject = data['subject']
         content = data['content']
-
         print('Parameters read')
-        # Crea l'email
+
         msg = MIMEText(content)
-        #msg = MIMEMultipart(content)
         msg['Subject'] = subject
         msg['From'] = sender_email
         msg['To'] = recipient
@@ -233,9 +226,7 @@ def send_email():
         print('Msg set up completed')
         # Invia l'email
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server: 
-            #server.ehlo()
             server.starttls()
-            #server.ehlo()
             print('Access Server completed')
             try:
                 server.login(sender_email, EMAIL_PASSWORD)
@@ -249,10 +240,8 @@ def send_email():
         return jsonify({'status': 'success', 'message': 'Email sent successfully!'}), 200
 
     except Exception as e:
-        # Risposta di errore
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 
 app.run(debug=True)
-#print(Query().get_email_parameters('efisiocasc@gmail.com'))
