@@ -56,24 +56,31 @@ class Query():
             print(f"Connection Error: {err}")
             return False
         
-    def check_token(self,attribute):
+    def check_token(self, attribute):
         try:
-            conn=self.dbConnection(config)
-            cursor=conn.cursor()
-            if cursor==False:
+            conn = self.dbConnection(config)
+            if not conn:
+                print("Database connection failed")
                 return False
-            query="SELECT token,created_at,counter,user_token.id FROM `user_token` INNER JOIN email on email_id=email.id \
-                   WHERE email.mail_address='"+attribute+"';"
-            #cursor.execute("SELECT token FROM "+table_name+" WHERE email = '"+attribute+"';")
-            cursor.execute(query)
-            result = cursor.fetchall()
-            cursor.close()
+
+            # Usa un blocco "with" per gestire il cursore
+            with conn.cursor() as cursor:
+                query = """
+                    SELECT token, created_at, counter, user_token.id
+                    FROM user_token
+                    INNER JOIN email ON email_id = email.id
+                    WHERE email.mail_address = %s
+                """
+                cursor.execute(query, (attribute,))
+                result = cursor.fetchall()
+
             conn.close()
-            print('Connection to DB closed')
+            print("Connection to DB closed")
             return result
-        except Exception as creationError: 
-            print(creationError)
+        except Exception as e:
+            print(f"Error occurred: {e}")
             return False
+
     
     def get_email_parameters(self,sender_email):
         try:
@@ -84,7 +91,7 @@ class Query():
             
             with conn.cursor() as cursor:
                 # Ottenere il valore corrente del contatore
-                query = "SELECT pssword,smtp_server,smtp_port FROM email WHERE mail_address = %s;"
+                query = "SELECT pssword,smtp_server,smtp_port,id FROM email WHERE mail_address = %s;"
                 cursor.execute(query, (sender_email,))
                 result = cursor.fetchall()
                 if not result:
@@ -134,33 +141,42 @@ class Query():
                 print("Database connection closed.")
 
     
-    def create_new_row(self, data:dict):
+    def create_new_row(self, data: dict):
         try:
-            conn=self.dbConnection(config)
-            cursor=conn.cursor()
-            if cursor==False:
+            conn = self.dbConnection(config)
+            if not conn:
+                print("Database connection failed.")
                 return False
-            attributes=list(data.keys())
-            attributes.remove('table')
-            query="INSERT INTO "+str(data['table']) + '('
-            for x in attributes:
-                query=query+x+','
-            query=query[:-1]
-            query=query+') VALUES ('
-            for x in attributes:
-                query=query+"'"+data[x]+"',"
-            query=query[:-1]
-            query=query+');'
 
-            cursor.execute(query) 
-            conn.commit()
-            cursor.close()
-            conn.close()
-            print('Connection to DB closed')
+            table = data.get('table')
+            if not table:
+                print("Table name not provided.")
+                return False
+
+            # Rimuovi 'table' dai dati e prepara i campi e i valori
+            fields = [key for key in data.keys() if key != 'table']
+            values = [data[key] for key in fields]
+
+            # Costruzione della query con placeholder
+            placeholders = ', '.join(['%s'] * len(fields))
+            field_names = ', '.join(fields)
+            query = f"INSERT INTO {table} ({field_names}) VALUES ({placeholders})"
+
+            # Esecuzione della query
+            with conn.cursor() as cursor:
+                cursor.execute(query, values)
+                conn.commit()
+
+            print("Row inserted successfully.")
             return True
-        except Exception as creationError: 
-            print(creationError)
+        except Exception as e:
+            print(f"Error occurred: {e}")
             return False
+        finally:
+            if conn:
+                conn.close()
+                print("Database connection closed.")
+
 
 @app.route('/generate-token', methods=['POST'])
 def generate_token(): 
@@ -170,18 +186,19 @@ def generate_token():
 
         if not sender_email:
             return jsonify({'status': 'error', 'message': 'Sender email missing'}), 400
-        
-        # Token generation
-        token = secrets.token_hex(16)
 
         #Token check
-        result=Query().check_token(sender_email,TOKEN_TABLE)
-
+        result=Query().check_token(sender_email)
         if result:
-            return jsonify({'status': 'success', 'message': 'Token recovered', 'token': result[0]}), 200
+            for x in result:
+                if x[1]== datetime.date.today() and x[2]<100:
+                    return jsonify({'status': 'success', 'message': 'Token recovered and not expired yet', 'token': x}), 200
 
         #New Token Saved
-        Query().create_new_row({'table':TOKEN_TABLE,'email':sender_email,'token':token})
+        # Token generation
+        token = secrets.token_hex(16)
+        user_id=Query().get_email_parameters(sender_email)[0][3]
+        Query().create_new_row({'table':'user_token','email_id':user_id,'token':token})
         return jsonify({'status': 'success', 'message': 'Token generated successfully', 'token': token}), 201
 
     except Exception as e:
