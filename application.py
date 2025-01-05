@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import requests
 import os
 import datetime
 from pathlib import Path
@@ -50,7 +51,7 @@ class Query():
     def dbConnection(self, config):
         try:
             conn = mysql.connector.connect(**config)
-            print("Connected to " + config['database'])
+            print("Connected to " + config['database']+" with host "+config['host'])
             return conn
         except mysql.connector.Error as err:
             print(f"Connection Error: {err}")
@@ -191,7 +192,7 @@ def generate_token():
         result=Query().check_token(sender_email)
         if result:
             for x in result:
-                if x[1]== datetime.date.today() and x[2]<100:
+                if x[1]== datetime.date.today() and x[2]<50:
                     return jsonify({'status': 'success', 'message': 'Token recovered and not expired yet', 'token': x}), 200
 
         #New Token Saved
@@ -212,6 +213,12 @@ def homepage():
 @app.route('/send-email', methods=['POST'])
 def send_email():
     try:
+        token = request.headers.get('Authorization')
+        if not token or not token.startswith("Bearer "):
+            return jsonify({'status': 'error', 'message': 'Authentication failed. Missing or invalid token.'}), 401
+        token = token.split("Bearer ")[1]
+        
+
         data = request.get_json()
         sender_email = data.get('sender_email')
         result=Query().check_token(sender_email)
@@ -219,7 +226,7 @@ def send_email():
             return jsonify({'status': 'error', 'message': 'Authentication failed. No Token present for this account.'}), 401
         token_validity=False
         for x in result:
-            if x[1] == datetime.date.today() and x[2] < 100:
+            if x[1] == datetime.date.today() and x[2] < 50:
                 token_validity=True
                 id=x[3]
                 break
